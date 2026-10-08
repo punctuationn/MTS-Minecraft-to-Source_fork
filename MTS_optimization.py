@@ -181,43 +181,91 @@ from MTS_block import TEXTURE_SCALE, compute_texture_config
 def create_cuboid(vmf, x, y, z, dx, dy, dz, block_type, properties):
     """
     Creates a cuboid in VMF with position (x, y, z) and dimensions (dx, dy, dz).
-    Sets textures and UVs to maintain default rotation.
 
-    Assuming:
-    solid.side[0] is TOP,
-    solid.side[1] is BOTTOM,
-    solid.side[2]-[5] are SIDES.
+    IMPORTANT FIXES:
+    - Never create zero/negative sized brushes (Hammer++ can hang in Postload Processing).
+    - Correct face index mapping: side[4]=TOP, side[5]=BOTTOM (matches create_block).
+    - Use sane UV axes on walls to avoid 'striped' textures in optimized mode.
+    - Adds solids consistently via vmf.world.solids.append(...).
     """
+    if dx <= 0 or dy <= 0 or dz <= 0:
+        return None
+
     solid_gen = SolidGenerator()
     vertex = Vertex(x, y, z)
+
     try:
         solid = solid_gen.cuboid(vertex, dx, dy, dz)
     except AttributeError:
         solid = solid_gen.cube(vertex, dx, dy, dz)
-    
+
     texture_config, orientation = compute_texture_config(block_type, properties)
-    
+
+    # Face indices used throughout this project:
+    # 0-3: walls, 4: TOP, 5: BOTTOM
+    TOP = 4
+    BOTTOM = 5
+
     if len(solid.side) >= 6:
-        # TOP
-        solid.side[0].material = texture_config.get("top", texture_config.get("sides", ""))
-        solid.side[0].uaxis = "[1 0 0 0] " + str(TEXTURE_SCALE)
-        solid.side[0].vaxis = "[0 -1 0 0] " + str(TEXTURE_SCALE)
-        # BOTTOM
-        solid.side[1].material = texture_config.get("bottom", texture_config.get("sides", ""))
-        solid.side[1].uaxis = "[1 0 0 0] " + str(TEXTURE_SCALE)
-        solid.side[1].vaxis = "[0 -1 0 0] " + str(TEXTURE_SCALE)
-        # Boki
-        for i in range(2, 6):
-            solid.side[i].material = texture_config.get("sides", texture_config.get("all", ""))
-            solid.side[i].uaxis = "[0 1 0 0] " + str(TEXTURE_SCALE)
-            solid.side[i].vaxis = "[0 0 -1 0] " + str(TEXTURE_SCALE)
+        # Default materials
+        mat_top = texture_config.get("top", texture_config.get("all", texture_config.get("sides", "")))
+        mat_bottom = texture_config.get("bottom", texture_config.get("all", texture_config.get("sides", "")))
+        mat_sides = texture_config.get("sides", texture_config.get("all", ""))
+
+        # If orientation is axis-like (logs/pillars), mimic create_block behaviour:
+        # - y: top/bottom use top, walls use sides
+        # - x: west/east faces use top
+        # - z: north/south faces use top
+        axis = None
+        if isinstance(orientation, str) and orientation.lower() in ("x", "y", "z"):
+            axis = orientation.lower()
+
+        for i, side in enumerate(solid.side):
+            # Pick material for this face
+            if axis == "y":
+                face_mat = mat_top if i in (TOP, BOTTOM) else mat_sides
+            elif axis == "x":
+                face_mat = mat_top if i in (2, 3) else mat_sides
+            elif axis == "z":
+                face_mat = mat_top if i in (0, 1) else mat_sides
+            else:
+                if i == TOP:
+                    face_mat = mat_top
+                elif i == BOTTOM:
+                    face_mat = mat_bottom
+                else:
+                    face_mat = mat_sides
+
+            side.material = face_mat
+
+            # UV axes (kept consistent with Source conventions)
+            if i == TOP or i == BOTTOM:
+                # Horizontal plane: U along X, V along -Y
+                side.uaxis = f"[1 0 0 0] {TEXTURE_SCALE}"
+                side.vaxis = f"[0 -1 0 0] {TEXTURE_SCALE}"
+            elif i in (0, 1):
+                # Wall (north/south-ish): U along X, V along -Z
+                side.uaxis = f"[1 0 0 0] {TEXTURE_SCALE}"
+                side.vaxis = f"[0 0 -1 0] {TEXTURE_SCALE}"
+            else:
+                # Wall (east/west-ish): U along Y, V along -Z
+                side.uaxis = f"[0 1 0 0] {TEXTURE_SCALE}"
+                side.vaxis = f"[0 0 -1 0] {TEXTURE_SCALE}"
+
+            side.lightmapscale = 16
+            side.smoothing_groups = 0
+            side.justify = 6
     else:
         for side in solid.side:
             side.material = texture_config.get("all", texture_config.get("sides", ""))
-            side.uaxis = "[1 0 0 0] " + str(TEXTURE_SCALE)
-            side.vaxis = "[0 -1 0 0] " + str(TEXTURE_SCALE)
-    
+            side.uaxis = f"[1 0 0 0] {TEXTURE_SCALE}"
+            side.vaxis = f"[0 0 -1 0] {TEXTURE_SCALE}"
+            side.lightmapscale = 16
+            side.smoothing_groups = 0
+            side.justify = 6
+
     vmf.world.solids.append(solid)
+    return solid
 
 # Optional testing
 if __name__ == "__main__":

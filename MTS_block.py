@@ -488,5 +488,5 @@ def create_block(vmf, x, y, z, block_type, texture_config, orientation=None):
         side.smoothing_groups = 0
         side.justify = 6
 
-    vmf.add_solids([solid])
+    vmf.world.solids.append(solid)
     return solid
