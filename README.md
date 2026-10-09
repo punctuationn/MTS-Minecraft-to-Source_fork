@@ -1,6 +1,6 @@
 i forgot how this is better but i think it was.
 
-### **CODE ENTIRELY MADE WITH OLD CHATGPT**
+### **CODE ENTIRELY EDITED WITH OLD CHATGPT**
 
 ## Original README: https://github.com/punctuationn/MTS-Minecraft-to-Source_fork/blob/main/README_ORIGIN.md
 
